@@ -1,0 +1,108 @@
+# Virtual Environment
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.Python
+
+# Python
+*.py[cod]
+*$py.class
+*.so
+.Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.python-version
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+*.env
+
+# Database Files (ignore actual files, not folders)
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded Files (ignore files, not folders)
+data/uploads/*
+!data/uploads/.gitkeep
+
+# FAISS Vector Store (ignore files, not folders)
+data/vector_store/*
+!data/vector_store/.gitkeep
+
+# Keep data folder structure
+data/*
+!data/.gitkeep
+!data/uploads/
+!data/vector_store/
+
+# FastAPI / Uvicorn
+*.log
+logs/
+*.pid
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+
+# Distribution / Packaging
+build/
+dist/
+*.egg-info/
+*.egg
+wheels/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Documentation
+docs/_build/
+site/

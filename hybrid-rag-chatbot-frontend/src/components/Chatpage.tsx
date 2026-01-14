@@ -1,5 +1,9 @@
+// frontend/src/components/Chatpage.tsx
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Paperclip, Plus } from 'lucide-react';
+import Buttons from './Buttons';
+import FileUploadModal from './FileUploadModal';
+
 
 interface Message {
   id: string;
@@ -8,15 +12,34 @@ interface Message {
   timestamp: Date;
 }
 
+
 interface ChatpageProps {
-  onNewChatCreated: (firstPrompt: string) => void;
+  activeChatId: string;
+  messages: Message[];
+  onFirstMessage: (chatId: string, firstPrompt: string) => Promise<void>;
+  onSendMessage: (chatId: string, message: string) => Promise<void>;
+  onCreateNewChat: (chatId: string) => Promise<void>;
+  onAddMessageLocally: (chatId: string, message: Message) => void;
+  loading: boolean;
 }
 
-const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
-  const [messages, setMessages] = useState<Message[]>([]);
+
+const Chatpage: React.FC<ChatpageProps> = ({ 
+  activeChatId, 
+  messages,
+  onFirstMessage,
+  onSendMessage,
+  onCreateNewChat,
+  onAddMessageLocally,
+  loading
+}) => {
   const [inputValue, setInputValue] = useState('');
-  const [isFirstMessage, setIsFirstMessage] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [selectedTab, setSelectedTab] = useState<'purchase' | 'hr' | 'finance'>('purchase');
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
 
   const COLORS = {
     chatBg: '#F4F7FC',
@@ -28,46 +51,78 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
     sendButton: '#A689FF',
   };
 
-  // Auto scroll to bottom when new messages arrive
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (inputValue.trim() === '') return;
 
-    // If first message, create chat in sidebar
-    if (isFirstMessage) {
-      onNewChatCreated(inputValue.trim());
-      setIsFirstMessage(false);
-    }
+  const handleTabSelect = (key: 'purchase' | 'hr' | 'finance') => {
+    console.log('🔘 Selected tab:', key);
+    setSelectedTab(key);
+  };
 
-    // Add user message
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: inputValue,
-      timestamp: new Date(),
-    };
 
-    setMessages([...messages, userMessage]);
+  const handleOpenUploadModal = () => {
+    setIsUploadModalOpen(true);
+  };
+
+
+  const handleSendMessage = async () => {
+    if (inputValue.trim() === '' || loading || isSending) return;
+
+
+    const messageContent = inputValue.trim();
     setInputValue('');
+    setIsSending(true);
 
-    // Simulate bot response (replace with actual API call later)
-    setTimeout(() => {
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        type: 'bot',
-        content: 'I received your message: "' + inputValue + '". This is a sample response. Once connected to the backend, I\'ll provide real analytics from your Excel/CSV data.',
+
+    try {
+      let chatId = activeChatId;
+
+
+      if (!chatId) {
+        chatId = Date.now().toString();
+        console.log('🆕 No active chat, creating new:', chatId);
+        await onCreateNewChat(chatId);
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+
+      const userMsg: Message = {
+        id: `msg_${Date.now()}`,
+        type: 'user',
+        content: messageContent,
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, botMessage]);
-    }, 1000);
+      console.log('➕ Adding user message to UI:', messageContent);
+      onAddMessageLocally(chatId, userMsg);
+
+
+      const isFirstMessage = messages.length === 0;
+      if (isFirstMessage) {
+        console.log('✏️ First message, updating chat title');
+        await onFirstMessage(chatId, messageContent);
+      }
+
+
+      console.log('📤 Sending message to backend');
+      await onSendMessage(chatId, messageContent);
+      
+      console.log('✅ Message flow completed successfully');
+      
+    } catch (error) {
+      console.error('❌ Error in message flow:', error);
+    } finally {
+      setIsSending(false);
+    }
   };
+
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -76,6 +131,7 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
     }
   };
 
+
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
@@ -83,21 +139,45 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
     });
   };
 
-  // Check if chat is empty
+
   const isChatEmpty = messages.length === 0;
+  const isDisabled = loading || isSending;
+
 
   return (
     <div
       style={{
         width: '100%',
-        height: '100vh',
+        height: 'calc(100vh)',
         backgroundColor: '#FFFFFF',
         display: 'flex',
         flexDirection: 'column',
         padding: '10px',
       }}
     >
-      {/* Chat Window Container */}
+      {/* File Upload Modal */}
+      <FileUploadModal 
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        defaultCategory={selectedTab}
+      />
+
+      {/* BUTTONS SECTION */}
+      <div
+        style={{
+          width: '100%',
+          padding: '8px 0 12px 0',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        <div style={{ maxWidth: '700px', width: '100%' }}>
+          <Buttons onSelect={handleTabSelect} />
+        </div>
+      </div>
+
+      {/* EXISTING CHAT AREA */}
       <div
         style={{
           flex: 1,
@@ -109,9 +189,7 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
         }}
       >
-        {/* Conditional Rendering: Empty State or Chat Messages */}
         {isChatEmpty ? (
-          // EMPTY STATE - Welcome View
           <div
             style={{
               flex: 1,
@@ -122,20 +200,31 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
               padding: '40px 20px',
             }}
           >
-            {/* Welcome Message */}
             <h1
               style={{
-                fontSize: '32px',
-                fontWeight: '500',
+                fontSize: '28px',
+                fontWeight: '600',
                 color: COLORS.text,
-                marginBottom: '40px',
+                marginBottom: '16px',
                 textAlign: 'center',
               }}
             >
-              Ready when you are.
+              Welcome to ARG Supply Tech Assistant
             </h1>
 
-            {/* Centered Input Box */}
+            <p
+              style={{
+                fontSize: '15px',
+                color: COLORS.textSecondary,
+                marginBottom: '40px',
+                textAlign: 'center',
+                maxWidth: '600px',
+                lineHeight: '1.6',
+              }}
+            >
+              Upload your supply chain Excel file to begin. I'll analyze your data and answer questions about inventory, costs, procurement, and more.
+            </p>
+
             <div
               style={{
                 width: '100%',
@@ -149,8 +238,8 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
                 boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
               }}
             >
-              {/* Plus Icon */}
               <button
+                onClick={handleOpenUploadModal}
                 style={{
                   padding: '8px',
                   backgroundColor: 'transparent',
@@ -172,13 +261,15 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
                 <Plus size={20} style={{ color: COLORS.textSecondary }} />
               </button>
 
-              {/* Input Field */}
               <input
+                ref={inputRef}
                 type="text"
                 placeholder="Ask anything"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
+                disabled={isDisabled}
+                autoFocus
                 style={{
                   flex: 1,
                   padding: '8px 0',
@@ -190,17 +281,17 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
                 }}
               />
 
-              {/* Send Button (appears when typing) */}
               {inputValue.trim() && (
                 <button
                   onClick={handleSendMessage}
+                  disabled={isDisabled}
                   style={{
                     padding: '8px 16px',
-                    backgroundColor: COLORS.sendButton,
+                    backgroundColor: isDisabled ? '#D1D5DB' : COLORS.sendButton,
                     color: '#FFFFFF',
                     border: 'none',
                     borderRadius: '16px',
-                    cursor: 'pointer',
+                    cursor: isDisabled ? 'not-allowed' : 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
@@ -209,31 +300,22 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
                     transition: 'all 0.2s',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#8D74DA';
+                    if (!isDisabled) {
+                      e.currentTarget.style.backgroundColor = '#8D74DA';
+                    }
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = COLORS.sendButton;
+                    if (!isDisabled) {
+                      e.currentTarget.style.backgroundColor = COLORS.sendButton;
+                    }
                   }}
                 >
                   <Send size={16} />
                 </button>
               )}
             </div>
-
-            {/* Helper Text */}
-            <p
-              style={{
-                fontSize: '13px',
-                color: COLORS.textSecondary,
-                marginTop: '24px',
-                textAlign: 'center',
-              }}
-            >
-              Upload Excel/CSV files and ask questions about your supply chain data
-            </p>
           </div>
         ) : (
-          // CHAT STATE - Normal Messages View
           <>
             {/* Messages Area */}
             <div
@@ -264,7 +346,6 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
                       alignItems: message.type === 'user' ? 'flex-end' : 'flex-start',
                     }}
                   >
-                    {/* Message Bubble */}
                     <div
                       style={{
                         backgroundColor: message.type === 'user' ? COLORS.userBubble : COLORS.botBubble,
@@ -279,8 +360,6 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
                     >
                       {message.content}
                     </div>
-
-                    {/* Timestamp */}
                     <span
                       style={{
                         fontSize: '11px',
@@ -295,6 +374,33 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
                   </div>
                 </div>
               ))}
+              
+              {/* Loading Indicator */}
+              {(loading || isSending) && (
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'flex-start',
+                    width: '100%',
+                  }}
+                >
+                  <div
+                    style={{
+                      backgroundColor: COLORS.botBubble,
+                      padding: '12px 16px',
+                      borderRadius: '16px',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                    }}
+                  >
+                    <div className="typing-indicator">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div ref={messagesEndRef} />
             </div>
 
@@ -315,8 +421,8 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
                   gap: '12px',
                 }}
               >
-                {/* File Attach Button */}
                 <button
+                  onClick={handleOpenUploadModal}
                   style={{
                     padding: '10px',
                     backgroundColor: 'transparent',
@@ -338,13 +444,13 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
                   <Paperclip size={20} style={{ color: COLORS.textSecondary }} />
                 </button>
 
-                {/* Text Input */}
                 <input
                   type="text"
                   placeholder="Type your message..."
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
+                  disabled={isDisabled}
                   style={{
                     flex: 1,
                     padding: '12px 16px',
@@ -363,17 +469,16 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
                   }}
                 />
 
-                {/* Send Button */}
                 <button
                   onClick={handleSendMessage}
-                  disabled={inputValue.trim() === ''}
+                  disabled={inputValue.trim() === '' || isDisabled}
                   style={{
                     padding: '12px 20px',
-                    backgroundColor: inputValue.trim() ? COLORS.sendButton : '#D1D5DB',
+                    backgroundColor: (inputValue.trim() && !isDisabled) ? COLORS.sendButton : '#D1D5DB',
                     color: '#FFFFFF',
                     border: 'none',
                     borderRadius: '12px',
-                    cursor: inputValue.trim() ? 'pointer' : 'not-allowed',
+                    cursor: (inputValue.trim() && !isDisabled) ? 'pointer' : 'not-allowed',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
@@ -382,20 +487,20 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
                     transition: 'all 0.2s',
                   }}
                   onMouseEnter={(e) => {
-                    if (inputValue.trim()) {
+                    if (inputValue.trim() && !isDisabled) {
                       e.currentTarget.style.backgroundColor = '#8D74DA';
                       e.currentTarget.style.transform = 'scale(1.02)';
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (inputValue.trim()) {
+                    if (inputValue.trim() && !isDisabled) {
                       e.currentTarget.style.backgroundColor = COLORS.sendButton;
                       e.currentTarget.style.transform = 'scale(1)';
                     }
                   }}
                 >
                   <Send size={16} />
-                  Send
+                  {isDisabled ? 'Sending...' : 'Send'}
                 </button>
               </div>
             </div>
@@ -403,7 +508,6 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
         )}
       </div>
 
-      {/* Custom Scrollbar Styles */}
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 8px;
@@ -418,9 +522,40 @@ const Chatpage: React.FC<ChatpageProps> = ({ onNewChatCreated }) => {
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: #9CA3AF;
         }
+        
+        /* Typing Indicator */
+        .typing-indicator {
+          display: flex;
+          gap: 4px;
+          align-items: center;
+        }
+        .typing-indicator span {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background-color: #A689FF;
+          animation: typing 1.4s infinite;
+        }
+        .typing-indicator span:nth-child(2) {
+          animation-delay: 0.2s;
+        }
+        .typing-indicator span:nth-child(3) {
+          animation-delay: 0.4s;
+        }
+        @keyframes typing {
+          0%, 60%, 100% {
+            opacity: 0.3;
+            transform: translateY(0);
+          }
+          30% {
+            opacity: 1;
+            transform: translateY(-10px);
+          }
+        }
       `}</style>
     </div>
   );
 };
+
 
 export default Chatpage;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Settings, MessageSquare, Trash2, Search, ArrowLeft, Pin } from 'lucide-react';
+import { Plus, Settings, MessageSquare, Trash2, Search, ArrowLeft, Pin, Edit2, Check, X } from 'lucide-react';
 
 interface Chat {
   id: string;
@@ -16,20 +16,27 @@ interface SidebarProps {
   setChats: React.Dispatch<React.SetStateAction<Chat[]>>;
   activeChat: string;
   setActiveChat: React.Dispatch<React.SetStateAction<string>>;
+  onDeleteChat: (chatId: string) => void;
+  onUpdateChat: (chatId: string, updates: { title?: string; pinned?: boolean }) => void;
+  onCreateNewChat: (chatId: string) => Promise<void>;  // ✅ ADD THIS LINE
 }
-
-const Sidebar: React.FC<SidebarProps> = ({ 
-  isOpen, 
-  onMouseEnter, 
+const Sidebar: React.FC<SidebarProps> = ({
+  isOpen,
+  onMouseEnter,
   onMouseLeave,
   chats,
   setChats,
   activeChat,
-  setActiveChat
-}) => {
+  setActiveChat,
+  onDeleteChat,
+  onUpdateChat,       // ✅ ADD THIS LINE
+  onCreateNewChat     // ✅ ADD THIS LINE
+}) =>{
   const [hoveredChat, setHoveredChat] = useState<string | null>(null);
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
 
   // Colors
   const COLORS = {
@@ -87,30 +94,47 @@ const Sidebar: React.FC<SidebarProps> = ({
     return groups;
   };
 
-  const handleNewChat = () => {
-    const newChat: Chat = {
-      id: Date.now().toString(),
-      title: 'New Chat',
-      timestamp: new Date(),
-      pinned: false,
-    };
-    setChats([newChat, ...chats]);
-    setActiveChat(newChat.id);
-  };
+ const handleNewChat = async () => {
+  const newChatId = Date.now().toString();
+  console.log('🆕 Creating new chat from sidebar:', newChatId);
+  
+  try {
+    await onCreateNewChat(newChatId);
+    setActiveChat(newChatId);
+    console.log('✅ New chat created and activated');
+  } catch (error) {
+    console.error('❌ Failed to create new chat:', error);
+  }
+};
 
   const handleDeleteChat = (e: React.MouseEvent, chatId: string) => {
     e.stopPropagation();
-    setChats(chats.filter((chat) => chat.id !== chatId));
-    if (activeChat === chatId) {
-      setActiveChat(chats[0]?.id || '');
-    }
+    onDeleteChat(chatId);
   };
 
-  const handlePinChat = (e: React.MouseEvent, chatId: string) => {
-    e.stopPropagation();
-    setChats(chats.map(chat => 
-      chat.id === chatId ? { ...chat, pinned: !chat.pinned } : chat
-    ));
+const handlePinChat = async (e: React.MouseEvent, chatId: string) => {
+  e.stopPropagation();
+  const chat = chats.find(c => c.id === chatId);
+  if (chat) {
+    await onUpdateChat(chatId, { pinned: !chat.pinned });
+  }
+};
+  const handleRenameChat = (chatId: string, currentTitle: string) => {
+    setEditingChatId(chatId);
+    setEditingTitle(currentTitle);
+  };
+
+const handleSaveRename = async (chatId: string) => {
+  if (editingTitle.trim()) {
+    await onUpdateChat(chatId, { title: editingTitle.trim() });
+  }
+  setEditingChatId(null);
+  setEditingTitle('');
+};  
+
+  const handleCancelRename = () => {
+    setEditingChatId(null);
+    setEditingTitle('');
   };
 
   const handleSearchToggle = () => {
@@ -145,22 +169,26 @@ const Sidebar: React.FC<SidebarProps> = ({
   const renderChatItem = (chat: Chat) => (
     <div
       key={chat.id}
-      onClick={() => setActiveChat(chat.id)}
+      onClick={() => {
+        if (editingChatId !== chat.id) {
+          setActiveChat(chat.id);
+        }
+      }}
       onMouseEnter={() => setHoveredChat(chat.id)}
       onMouseLeave={() => setHoveredChat(null)}
       className="group relative flex items-start gap-2 px-2 py-1.5 rounded-lg transition-all duration-200"
       style={{
         backgroundColor: activeChat === chat.id ? `${COLORS.active}30` : 'transparent',
         borderRight: activeChat === chat.id ? `3px solid ${COLORS.active}` : 'none',
-        cursor: 'pointer'
+        cursor: editingChatId === chat.id ? 'default' : 'pointer'
       }}
       onMouseOver={(e) => {
-        if (activeChat !== chat.id) {
+        if (activeChat !== chat.id && editingChatId !== chat.id) {
           e.currentTarget.style.backgroundColor = `${COLORS.highlight}1A`;
         }
       }}
       onMouseOut={(e) => {
-        if (activeChat !== chat.id) {
+        if (activeChat !== chat.id && editingChatId !== chat.id) {
           e.currentTarget.style.backgroundColor = 'transparent';
         }
       }}
@@ -170,16 +198,105 @@ const Sidebar: React.FC<SidebarProps> = ({
         className="mt-0.5 flex-shrink-0"
         style={{ color: activeChat === chat.id ? COLORS.active : '#9CA3AF' }}
       />
+      
+      {/* Editable Title or Display Title */}
       <div className="flex-1 min-w-0">
-        <p className="text-xs truncate leading-tight" style={{ color: COLORS.text }}>
-          {chat.title}
-        </p>
-        <p className="text-[10px] mt-0.5" style={{ color: '#6B7280' }}>
-          {getTimeAgo(chat.timestamp)}
-        </p>
+        {editingChatId === chat.id ? (
+          <input
+            type="text"
+            value={editingTitle}
+            onChange={(e) => setEditingTitle(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                handleSaveRename(chat.id);
+              } else if (e.key === 'Escape') {
+                handleCancelRename();
+              }
+            }}
+            autoFocus
+            style={{
+              width: '100%',
+              padding: '2px 4px',
+              fontSize: '12px',
+              border: `1px solid ${COLORS.highlight}`,
+              borderRadius: '4px',
+              backgroundColor: COLORS.sidebarBg,
+              color: COLORS.text,
+              outline: 'none',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <>
+            <p className="text-xs truncate leading-tight" style={{ color: COLORS.text }}>
+              {chat.title}
+            </p>
+            <p className="text-[10px] mt-0.5" style={{ color: '#6B7280' }}>
+              {getTimeAgo(chat.timestamp)}
+            </p>
+          </>
+        )}
       </div>
-      {hoveredChat === chat.id && (
+      
+      {/* Action Buttons */}
+      {editingChatId === chat.id ? (
         <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-0.5">
+          {/* Save Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSaveRename(chat.id);
+            }}
+            className="p-1 rounded transition-colors"
+            style={{ color: '#10B981', cursor: 'pointer' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#10B98120';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            <Check size={12} />
+          </button>
+          {/* Cancel Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCancelRename();
+            }}
+            className="p-1 rounded transition-colors"
+            style={{ color: '#EF4444', cursor: 'pointer' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#EF444420';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      ) : hoveredChat === chat.id && (
+        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-0.5">
+          {/* Rename Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRenameChat(chat.id, chat.title);
+            }}
+            className="p-1 rounded transition-colors"
+            style={{ color: '#9CA3AF', cursor: 'pointer' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = `${COLORS.highlight}30`;
+              e.currentTarget.style.color = COLORS.highlight;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = '#9CA3AF';
+            }}
+          >
+            <Edit2 size={12} />
+          </button>
           {/* Pin Button */}
           <button
             onClick={(e) => handlePinChat(e, chat.id)}
@@ -214,8 +331,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
       )}
+      
       {/* Show pin icon when chat is pinned and not hovered */}
-      {chat.pinned && hoveredChat !== chat.id && (
+      {chat.pinned && hoveredChat !== chat.id && editingChatId !== chat.id && (
         <Pin 
           size={11} 
           className="absolute right-1.5 top-1/2 -translate-y-1/2" 
