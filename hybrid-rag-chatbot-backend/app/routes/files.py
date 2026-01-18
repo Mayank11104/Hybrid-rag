@@ -1,4 +1,5 @@
 # app/routes/files.py
+
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form
 from pathlib import Path
 import aiosqlite
@@ -9,7 +10,7 @@ from typing import Optional
 
 from app.database import get_db
 from app.models import (
-    FileUploadResponse, 
+    FileUploadResponse,
     SuccessResponse,
     CategoryFileUploadResponse,
     FileListResponse,
@@ -17,9 +18,10 @@ from app.models import (
     FileCategory
 )
 
+# ✏️ CHANGE #1: Import RAG rebuild function
+from app.services.rag_service import rebuild_rag_system
 
 router = APIRouter(prefix="/files", tags=["Files"])
-
 
 # Upload directory
 UPLOAD_DIR = Path(__file__).parent.parent.parent / "data" / "uploads"
@@ -60,7 +62,7 @@ async def upload_file_with_category(
         # Save to database
         await db.execute(
             """INSERT INTO uploaded_files 
-            (id, filename, original_filename, file_path, file_size, file_type, category, description) 
+            (id, filename, original_filename, file_path, file_size, file_type, category, description)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 file_id,
@@ -76,6 +78,15 @@ async def upload_file_with_category(
         await db.commit()
         
         print(f"✅ File uploaded: {file.filename} | Category: {category.value} | Size: {file_size} bytes")
+        
+        # ✏️ CHANGE #2: Rebuild RAG system after file upload
+        print("🔄 Triggering RAG system rebuild...")
+        rebuild_success = await rebuild_rag_system()
+        
+        if rebuild_success:
+            print("✅ RAG system rebuilt successfully")
+        else:
+            print("⚠️ RAG rebuild completed with warnings")
         
         return CategoryFileUploadResponse(
             file_id=file_id,
@@ -160,6 +171,15 @@ async def delete_category_file(file_id: str, db: aiosqlite.Connection = Depends(
         await db.execute("DELETE FROM uploaded_files WHERE id = ?", (file_id,))
         await db.commit()
         
+        # ✏️ CHANGE #3: Rebuild RAG system after file deletion
+        print("🔄 Triggering RAG system rebuild after file deletion...")
+        rebuild_success = await rebuild_rag_system()
+        
+        if rebuild_success:
+            print("✅ RAG system rebuilt successfully")
+        else:
+            print("⚠️ RAG rebuild completed with warnings")
+        
         return SuccessResponse(
             success=True,
             message=f"File '{row['original_filename']}' deleted successfully"
@@ -205,11 +225,16 @@ async def upload_file(
         if chat_id:
             await db.execute(
                 """INSERT INTO files 
-                (id, chat_id, filename, file_path, file_size, file_type) 
+                (id, chat_id, filename, file_path, file_size, file_type)
                 VALUES (?, ?, ?, ?, ?, ?)""",
                 (file_id, chat_id, file.filename, str(file_path), file_size, file_ext)
             )
-            await db.commit()
+        
+        await db.commit()
+        
+        # ✏️ CHANGE #4: Rebuild RAG system after legacy upload too
+        print("🔄 Triggering RAG system rebuild...")
+        await rebuild_rag_system()
         
         return FileUploadResponse(
             file_id=file_id,
@@ -262,6 +287,10 @@ async def delete_file(file_id: str, db: aiosqlite.Connection = Depends(get_db)):
     # Delete from database
     await db.execute("DELETE FROM files WHERE id = ?", (file_id,))
     await db.commit()
+    
+    # ✏️ CHANGE #5: Rebuild RAG after legacy file deletion
+    print("🔄 Triggering RAG system rebuild after file deletion...")
+    await rebuild_rag_system()
     
     return SuccessResponse(
         success=True,

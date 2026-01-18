@@ -1,4 +1,5 @@
 # app/main.py
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -7,6 +8,9 @@ from dotenv import load_dotenv
 
 from app.database import init_db, close_db
 from app.routes import chat, files
+
+# ✏️ CHANGE #1: Import RAG status function
+from app.services.rag_service import get_rag_status, initialize_rag_system
 
 # Load environment variables
 load_dotenv()
@@ -19,7 +23,17 @@ async def lifespan(app: FastAPI):
     print("🚀 Starting ARG Supply Tech Chatbot API...")
     await init_db()
     print("✅ Database ready!")
+    
+    # ✏️ CHANGE #2: Initialize RAG system on startup
+    print("🔄 Initializing RAG system...")
+    rag_initialized = await initialize_rag_system()
+    if rag_initialized:
+        print("✅ RAG system ready!")
+    else:
+        print("⚠️ RAG system will initialize on first query (no files uploaded yet)")
+    
     yield
+    
     # Shutdown
     print("👋 Shutting down...")
     await close_db()
@@ -66,10 +80,20 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    # ✏️ CHANGE #3: Get RAG system status
+    rag_status = get_rag_status()
+    
     return {
         "status": "healthy",
         "database": "connected",
-        "groq_api": "configured"
+        "rag_system": {
+            "initialized": rag_status["initialized"],
+            "files_loaded": rag_status["files_loaded"],
+            "data_rows": rag_status["rows"],
+            "data_columns": rag_status["columns"],
+            "retriever_available": rag_status["retriever_available"]
+        },
+        "gcp_vertex_ai": "configured" if os.getenv("GCP_PROJECT_ID") else "not_configured"
     }
 
 

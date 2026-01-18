@@ -1,4 +1,5 @@
 # app/routes/chat.py
+
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime
 import aiosqlite
@@ -11,7 +12,9 @@ from app.models import (
     ChatRequest, ChatMessageResponse,
     SuccessResponse
 )
-from app.services.groq_service import get_groq_response
+
+# ✏️ CHANGE #1: Import RAG service instead of Groq
+from app.services.rag_service import get_rag_response
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -85,8 +88,8 @@ async def get_chat(chat_id: str, db: aiosqlite.Connection = Depends(get_db)):
 
 @router.put("/{chat_id}", response_model=ChatResponse)
 async def update_chat(
-    chat_id: str, 
-    chat_update: ChatUpdate, 
+    chat_id: str,
+    chat_update: ChatUpdate,
     db: aiosqlite.Connection = Depends(get_db)
 ):
     """Update chat (title, pinned status)"""
@@ -125,7 +128,7 @@ async def delete_chat(chat_id: str, db: aiosqlite.Connection = Depends(get_db)):
 
 @router.get("/{chat_id}/messages", response_model=List[MessageResponse])
 async def get_chat_messages(
-    chat_id: str, 
+    chat_id: str,
     db: aiosqlite.Connection = Depends(get_db)
 ):
     """Get all messages for a chat"""
@@ -178,8 +181,8 @@ async def send_message(
             for row in history_rows
         ]
         
-        # Get Groq response
-        bot_response = await get_groq_response(user_message, chat_history)
+        # ✏️ CHANGE #2: Call RAG service instead of Groq
+        bot_response = await get_rag_response(user_message, chat_history)
         
         # Save bot message
         await db.execute(
